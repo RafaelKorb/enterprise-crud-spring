@@ -10,6 +10,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) · Versiona
 - Exceções de domínio `AccountNotFoundException` e `DocumentNumberAlreadyRegisteredException`.
 - Diagramas de fluxo da aplicação em `docs/architecture-flow.md`.
 - Convenções de commit, branch e versionamento em `CONTRIBUTING.md`.
+- Persistência PostgreSQL: migration `V1__create_account` (unique no documento, check de saldo e status), entidade JPA com `@Version` e adapter do `AccountRepository` com paginação por keyset.
 
 ### Changed
 - Valores monetários com mais de 2 casas decimais passam a ser rejeitados pelo domínio.
