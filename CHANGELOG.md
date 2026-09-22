@@ -12,4 +12,5 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) · Versiona
 - Convenções de commit, branch e versionamento em `CONTRIBUTING.md`.
 
 ### Changed
+- Valores monetários com mais de 2 casas decimais passam a ser rejeitados pelo domínio.
 - `Account` não incrementa mais `version`; o incremento do lock otimista passa a ser responsabilidade da persistência.

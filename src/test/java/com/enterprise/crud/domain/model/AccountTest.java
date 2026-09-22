@@ -45,6 +45,16 @@ class AccountTest {
     }
 
     @Test
+    void amountsFinerThanCentsAreRejectedButTrailingZerosAreAccepted() {
+        Account account = Account.open(DOCUMENT_NUMBER);
+
+        assertThrows(InvalidAmountException.class, () -> account.credit(new BigDecimal("10.005")));
+        assertThrows(InvalidAmountException.class, () -> account.debit(new BigDecimal("0.001")));
+        account.credit(new BigDecimal("10.500"));
+        assertEquals(0, new BigDecimal("10.50").compareTo(account.balance()));
+    }
+
+    @Test
     void debitDecreasesBalance() {
         Account account = Account.open(DOCUMENT_NUMBER);
         account.credit(new BigDecimal("100.00"));
