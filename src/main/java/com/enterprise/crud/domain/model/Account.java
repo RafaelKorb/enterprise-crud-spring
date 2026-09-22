@@ -112,7 +112,6 @@ public final class Account {
 
     private void touch() {
         this.updatedAt = Instant.now();
-        this.version++;
     }
 
     public AccountId id() {
@@ -139,6 +138,10 @@ public final class Account {
         return updatedAt;
     }
 
+    /**
+     * Version read from storage, used for optimistic locking. The domain never increments it: the persistence
+     * adapter owns increments, so a concurrent write is detected against the value that was loaded.
+     */
     public long version() {
         return version;
     }

@@ -27,13 +27,12 @@ class AccountTest {
     }
 
     @Test
-    void creditIncreasesBalanceAndBumpsVersion() {
+    void creditIncreasesBalance() {
         Account account = Account.open(DOCUMENT_NUMBER);
 
         account.credit(new BigDecimal("100.00"));
 
         assertEquals(new BigDecimal("100.00"), account.balance());
-        assertEquals(1L, account.version());
     }
 
     @Test
@@ -42,18 +41,17 @@ class AccountTest {
 
         assertThrows(InvalidAmountException.class, () -> account.credit(BigDecimal.ZERO));
         assertThrows(InvalidAmountException.class, () -> account.credit(new BigDecimal("-10.00")));
-        assertEquals(0L, account.version(), "rejected mutations must not bump the version");
+        assertEquals(BigDecimal.ZERO, account.balance(), "rejected mutations must not change the balance");
     }
 
     @Test
-    void debitDecreasesBalanceAndBumpsVersion() {
+    void debitDecreasesBalance() {
         Account account = Account.open(DOCUMENT_NUMBER);
         account.credit(new BigDecimal("100.00"));
 
         account.debit(new BigDecimal("40.00"));
 
         assertEquals(new BigDecimal("60.00"), account.balance());
-        assertEquals(2L, account.version());
     }
 
     @Test
@@ -86,16 +84,28 @@ class AccountTest {
     }
 
     @Test
-    void blockThenActivateRoundTripsStatusAndBumpsVersionTwice() {
+    void blockThenActivateRoundTripsStatus() {
         Account account = Account.open(DOCUMENT_NUMBER);
 
         account.block();
         assertEquals(AccountStatus.BLOCKED, account.status());
-        assertEquals(1L, account.version());
 
         account.activate();
         assertEquals(AccountStatus.ACTIVE, account.status());
-        assertEquals(2L, account.version());
+    }
+
+    @Test
+    void mutationsKeepTheLoadedVersionBecausePersistenceOwnsIncrements() {
+        Instant createdAt = Instant.parse("2026-01-01T00:00:00Z");
+        Account account = Account.reconstitute(AccountId.newId(), DOCUMENT_NUMBER, new BigDecimal("100.00"),
+                AccountStatus.ACTIVE, createdAt, createdAt, 7L);
+
+        account.credit(new BigDecimal("10.00"));
+        account.debit(new BigDecimal("5.00"));
+        account.block();
+
+        assertEquals(7L, account.version());
+        assertTrue(account.updatedAt().isAfter(createdAt), "mutations must refresh updatedAt");
     }
 
     @Test
@@ -126,13 +136,14 @@ class AccountTest {
     }
 
     @Test
-    void redundantStatusTransitionIsIdempotentAndDoesNotBumpVersion() {
+    void redundantStatusTransitionIsIdempotentAndDoesNotTouchUpdatedAt() {
         Account account = Account.open(DOCUMENT_NUMBER);
+        Instant updatedAt = account.updatedAt();
 
         account.activate();
 
         assertEquals(AccountStatus.ACTIVE, account.status());
-        assertEquals(0L, account.version());
+        assertEquals(updatedAt, account.updatedAt());
     }
 
     @Test
