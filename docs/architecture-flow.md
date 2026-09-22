@@ -170,11 +170,6 @@ stateDiagram-v2
 
 ---
 
-## 6. Ponto em aberto
+## 6. Decisão: versão do agregado × JPA `@Version`
 
-**Versão controlada pelo domínio vs. JPA `@Version`.** Hoje `Account.touch()` incrementa `version` em memória. Se o adaptador copiar esse valor já incrementado para a entidade JPA, o Hibernate compara `n+1` com o `n` gravado no banco e lança `OptimisticLockException` em **toda** atualização. Há duas saídas:
-
-1. O mapper grava na entidade a versão **lida** do banco e deixa o Hibernate incrementar.
-2. O domínio deixa de incrementar e só carrega a versão.
-
-Decidir antes de implementar `infrastructure/persistence`.
+**Decidido: o domínio só carrega a versão.** `Account` guarda a versão lida do banco e nunca a incrementa; `touch()` atualiza apenas `updatedAt`. O incremento é responsabilidade da persistência (`@Version` no Hibernate), então o `UPDATE ... WHERE version = n` compara sempre com o valor efetivamente lido e uma escrita concorrente vira `OptimisticLockException` → 409.
