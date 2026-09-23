@@ -67,13 +67,14 @@ Respostas de erro em `application/problem+json` (RFC 9457), conforme a seção 5
 
 | Método | Caminho | Corpo | Sucesso | Caso de uso |
 |---|---|---|---|---|
-| `POST` | `/accounts` | `{"documentNumber"}` | 201 + `Location` | `OpenAccountUseCase` |
-| `GET` | `/accounts/{id}` | — | 200 | `GetAccountUseCase` |
-| `GET` | `/accounts?cursor=&limit=` | — | 200 `{items, nextCursor}` | `ListAccountsUseCase` |
-| `POST` | `/accounts/{id}/credits` | `{"amount"}` | 200 | `CreditAccountUseCase` |
-| `POST` | `/accounts/{id}/debits` | `{"amount"}` | 200 | `DebitAccountUseCase` |
-| `PUT` | `/accounts/{id}/status` | `{"status"}` | 200 | `ChangeAccountStatusUseCase` |
+| `POST` | `/api/v1/accounts` | `{"documentNumber"}` | 201 + `Location` | `OpenAccountUseCase` |
+| `GET` | `/api/v1/accounts/{id}` | — | 200 | `GetAccountUseCase` |
+| `GET` | `/api/v1/accounts?cursor=&limit=` | — | 200 `{items, nextCursor}` | `ListAccountsUseCase` |
+| `POST` | `/api/v1/accounts/{id}/credits` | `{"amount"}` | 200 | `CreditAccountUseCase` |
+| `POST` | `/api/v1/accounts/{id}/debits` | `{"amount"}` | 200 | `DebitAccountUseCase` |
+| `PUT` | `/api/v1/accounts/{id}/status` | `{"status"}` | 200 | `ChangeAccountStatusUseCase` |
 
+- **Versionamento:** a versão vem do segmento da URL (`/api/v1/...`), resolvida pelo versionamento nativo do Spring Framework 7 (`spring.mvc.apiversion.*` em `application.properties`). Versão não suportada (ex.: `/api/v2/...`) retorna 400. Para criar a v2: incluir `2` em `spring.mvc.apiversion.supported`, declarar `version = "2"` nos mapeamentos que mudarem e trocar os que não mudam para a baseline `"1+"` (atende v1 e v2). Com `version = "1"`, o mapeamento atende só a v1.
 - `limit` padrão 20, máximo 100. `nextCursor` é `null` na última página.
 - A mudança de status é `PUT` porque ir para o status atual é no-op no domínio, então a chamada é idempotente.
 - A resposta traz `version`; um conflito de escrita concorrente retorna 409 e o cliente deve recarregar e tentar de novo.
@@ -82,7 +83,7 @@ Respostas de erro em `application/problem+json` (RFC 9457), conforme a seção 5
 
 ## 2. Fluxo de mutação: débito com idempotência e lock otimista
 
-Exemplo de ponta a ponta para `POST /accounts/{id}/debits` ✅. Crédito e mudança de status seguem o mesmo esqueleto e só trocam o método chamado no agregado. As etapas com Redis (`Idempotency-Key`) ainda são 🕐: hoje o controller chama o caso de uso direto.
+Exemplo de ponta a ponta para `POST /api/v1/accounts/{id}/debits` ✅. Crédito e mudança de status seguem o mesmo esqueleto e só trocam o método chamado no agregado. As etapas com Redis (`Idempotency-Key`) ainda são 🕐: hoje o controller chama o caso de uso direto.
 
 ```mermaid
 sequenceDiagram
@@ -95,7 +96,7 @@ sequenceDiagram
     participant RA as RepositoryAdapter
     participant DB as PostgreSQL
 
-    C->>RC: POST /accounts/{id}/debits<br/>Idempotency-Key: k1 · {amount}
+    C->>RC: POST /api/v1/accounts/{id}/debits<br/>Idempotency-Key: k1 · {amount}
     RC->>R: SET idem:k1 PROCESSING NX EX ttl
     alt chave já existe com resposta
         R-->>RC: resposta armazenada
@@ -142,7 +143,7 @@ sequenceDiagram
     participant RA as RepositoryAdapter
     participant DB as PostgreSQL
 
-    C->>RC: GET /accounts?cursor=abc&limit=50
+    C->>RC: GET /api/v1/accounts?cursor=abc&limit=50
     RC->>UC: execute(ListAccountsQuery)
     UC->>RA: findPage(Optional[cursor], limit + 1)
     RA->>DB: SELECT ... WHERE id > :cursor<br/>ORDER BY id LIMIT :limit+1

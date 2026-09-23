@@ -79,11 +79,11 @@ class AccountControllerTest {
     void openReturnsCreatedWithLocationAndBody() {
         given(openAccount.execute(new OpenAccountCommand("52998224725"))).willReturn(ACCOUNT);
 
-        assertThat(mvc.post().uri("/accounts").contentType(MediaType.APPLICATION_JSON)
+        assertThat(mvc.post().uri("/api/v1/accounts").contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"documentNumber": "52998224725"}"""))
                 .hasStatus(HttpStatus.CREATED)
-                .hasHeader("Location", "http://localhost/accounts/" + ID)
+                .hasHeader("Location", "http://localhost/api/v1/accounts/" + ID)
                 .bodyJson()
                 .hasPathSatisfying("$.id", id -> id.assertThat().isEqualTo(ID.toString()))
                 .hasPathSatisfying("$.balance", balance -> balance.assertThat().isEqualTo(10.5))
@@ -94,7 +94,7 @@ class AccountControllerTest {
 
     @Test
     void openWithBlankDocumentIsBadRequest() {
-        assertThat(mvc.post().uri("/accounts").contentType(MediaType.APPLICATION_JSON)
+        assertThat(mvc.post().uri("/api/v1/accounts").contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"documentNumber": " "}"""))
                 .hasStatus(HttpStatus.BAD_REQUEST)
@@ -106,15 +106,23 @@ class AccountControllerTest {
     void getReturnsAccount() {
         given(getAccount.execute(any())).willReturn(ACCOUNT);
 
-        assertThat(mvc.get().uri("/accounts/{id}", ID))
+        assertThat(mvc.get().uri("/api/v1/accounts/{id}", ID))
                 .hasStatusOk()
                 .bodyJson()
                 .hasPathSatisfying("$.documentNumber", doc -> doc.assertThat().isEqualTo("52998224725"));
     }
 
     @Test
+    void unsupportedVersionIsRejected() {
+        assertThat(mvc.get().uri("/api/v2/accounts/{id}", ID))
+                .hasStatus(HttpStatus.BAD_REQUEST)
+                .hasContentType(MediaType.APPLICATION_PROBLEM_JSON);
+        verifyNoInteractions(getAccount);
+    }
+
+    @Test
     void malformedIdIsBadRequest() {
-        assertThat(mvc.get().uri("/accounts/not-a-uuid")).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(mvc.get().uri("/api/v1/accounts/not-a-uuid")).hasStatus(HttpStatus.BAD_REQUEST);
         verifyNoInteractions(getAccount);
     }
 
@@ -123,7 +131,7 @@ class AccountControllerTest {
         UUID next = UUID.randomUUID();
         given(listAccounts.execute(any())).willReturn(new AccountPageResult(List.of(ACCOUNT), Optional.of(next)));
 
-        assertThat(mvc.get().uri("/accounts"))
+        assertThat(mvc.get().uri("/api/v1/accounts"))
                 .hasStatusOk()
                 .bodyJson()
                 .hasPathSatisfying("$.items[0].id", id -> id.assertThat().isEqualTo(ID.toString()))
@@ -135,7 +143,7 @@ class AccountControllerTest {
     void listForwardsCursorAndLimit() {
         given(listAccounts.execute(any())).willReturn(new AccountPageResult(List.of(), Optional.empty()));
 
-        assertThat(mvc.get().uri("/accounts?cursor={cursor}&limit=5", ID))
+        assertThat(mvc.get().uri("/api/v1/accounts?cursor={cursor}&limit=5", ID))
                 .hasStatusOk()
                 .bodyJson()
                 .hasPathSatisfying("$.nextCursor", cursor -> cursor.assertThat().isNull());
@@ -145,7 +153,7 @@ class AccountControllerTest {
     @ParameterizedTest
     @ValueSource(strings = {"0", "101", "abc"})
     void listRejectsOutOfRangeLimit(String limit) {
-        assertThat(mvc.get().uri("/accounts?limit={limit}", limit)).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(mvc.get().uri("/api/v1/accounts?limit={limit}", limit)).hasStatus(HttpStatus.BAD_REQUEST);
         verifyNoInteractions(listAccounts);
     }
 
@@ -153,7 +161,7 @@ class AccountControllerTest {
     void creditMapsPathAndBodyIntoCommand() {
         given(creditAccount.execute(any())).willReturn(ACCOUNT);
 
-        assertThat(mvc.post().uri("/accounts/{id}/credits", ID).contentType(MediaType.APPLICATION_JSON)
+        assertThat(mvc.post().uri("/api/v1/accounts/{id}/credits", ID).contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"amount": 10.50}"""))
                 .hasStatusOk();
@@ -166,7 +174,7 @@ class AccountControllerTest {
 
     @Test
     void debitWithoutAmountIsBadRequest() {
-        assertThat(mvc.post().uri("/accounts/{id}/debits", ID).contentType(MediaType.APPLICATION_JSON)
+        assertThat(mvc.post().uri("/api/v1/accounts/{id}/debits", ID).contentType(MediaType.APPLICATION_JSON)
                 .content("{}"))
                 .hasStatus(HttpStatus.BAD_REQUEST);
         verifyNoInteractions(debitAccount);
@@ -176,7 +184,7 @@ class AccountControllerTest {
     void changeStatusMapsTargetStatus() {
         given(changeAccountStatus.execute(any())).willReturn(ACCOUNT);
 
-        assertThat(mvc.put().uri("/accounts/{id}/status", ID).contentType(MediaType.APPLICATION_JSON)
+        assertThat(mvc.put().uri("/api/v1/accounts/{id}/status", ID).contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"status": "BLOCKED"}"""))
                 .hasStatusOk();
@@ -185,7 +193,7 @@ class AccountControllerTest {
 
     @Test
     void unknownStatusIsBadRequest() {
-        assertThat(mvc.put().uri("/accounts/{id}/status", ID).contentType(MediaType.APPLICATION_JSON)
+        assertThat(mvc.put().uri("/api/v1/accounts/{id}/status", ID).contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"status": "FROZEN"}"""))
                 .hasStatus(HttpStatus.BAD_REQUEST);
@@ -209,7 +217,7 @@ class AccountControllerTest {
     void failuresBecomeProblemDetails(RuntimeException failure, HttpStatus expected) {
         given(debitAccount.execute(any())).willThrow(failure);
 
-        assertThat(mvc.post().uri("/accounts/{id}/debits", ID).contentType(MediaType.APPLICATION_JSON)
+        assertThat(mvc.post().uri("/api/v1/accounts/{id}/debits", ID).contentType(MediaType.APPLICATION_JSON)
                 .content("""
                         {"amount": 1.00}"""))
                 .hasStatus(expected)

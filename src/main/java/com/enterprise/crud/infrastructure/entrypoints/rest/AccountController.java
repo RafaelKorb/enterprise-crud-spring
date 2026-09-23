@@ -32,8 +32,13 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Versioned through Spring's API versioning: the {@code {version}} segment is resolved by
+ * {@code spring.mvc.apiversion.*}. To add v2, list it in {@code spring.mvc.apiversion.supported}, declare
+ * {@code version = "2"} on the mappings that change and switch unchanged ones to the baseline {@code "1+"}.
+ */
 @RestController
-@RequestMapping("/accounts")
+@RequestMapping(path = "/api/{version}/accounts", version = "1")
 class AccountController {
 
     private final OpenAccountUseCase openAccount;
