@@ -10,6 +10,9 @@ import java.util.Objects;
 
 public final class Account {
 
+    /** Monetary amounts are stored with cent precision; finer values would be silently rounded. */
+    public static final int MONEY_SCALE = 2;
+
     private final AccountId id;
     private final DocumentNumber documentNumber;
     private final Instant createdAt;
@@ -107,6 +110,10 @@ public final class Account {
     private static void requirePositiveAmount(BigDecimal amount) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new InvalidAmountException("Amount must be greater than zero: " + amount);
+        }
+        if (amount.stripTrailingZeros().scale() > MONEY_SCALE) {
+            throw new InvalidAmountException(
+                    "Amount must have at most %d decimal places: %s".formatted(MONEY_SCALE, amount));
         }
     }
 
