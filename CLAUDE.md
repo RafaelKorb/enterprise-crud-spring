@@ -19,15 +19,16 @@
 - Connection pool tuned via HikariCP (connectionTimeout=2000ms).
 
 ## Build & Test Commands (Gradle Wrapper)
-- Build & Compile: `./gradlew clean compileJava`
-- Run all tests: `./gradlew test`
-- Run single test: `./gradlew test --tests "com.enterprise.crud.*AccountUseCaseTest"`
-- Continuous build check: `./gradlew check -x test`
+- Always invoke Gradle through `scripts/gradle.sh`: it uses the host JVM when it is JDK 25+, otherwise runs `./gradlew` inside `eclipse-temurin:25-jdk` (Docker socket shared for Testcontainers).
+- Build & Compile: `scripts/gradle.sh clean compileJava`
+- Run all tests: `scripts/gradle.sh test`
+- Run single test: `scripts/gradle.sh test --tests "com.enterprise.crud.*AccountUseCaseTest"`
+- Continuous build check: `scripts/gradle.sh check -x test`
 
 ## Agent Workflow & Quality Gate
 - Before concluding any task:
-  1. Ensure code compiles with `./gradlew compileJava`.
-  2. Verify unit and integration tests pass with `./gradlew test`.
+  1. Ensure code compiles with `scripts/gradle.sh compileJava`.
+  2. Verify unit and integration tests pass with `scripts/gradle.sh test`.
   3. No architectural leakage across layer boundaries.
 
 ## Containerization Guidelines
