@@ -15,6 +15,7 @@ flowchart LR
     client([Cliente HTTP])
 
     subgraph infra_in["infrastructure / entrypoints.rest ✅"]
+        idem[IdempotencyFilter<br/>POST · Idempotency-Key]
         ctrl[AccountController]
         rmap[REST Mapper<br/>MapStruct]
         handler[GlobalExceptionHandler<br/>RFC 7807 ProblemDetails]
@@ -41,10 +42,10 @@ flowchart LR
 
     subgraph ext["Infra externa"]
         pg[(PostgreSQL 16<br/>Flyway)]
-        redis[(Redis 7<br/>idempotência 🕐)]
+        redis[(Redis 7<br/>idempotência)]
     end
 
-    client -->|JSON| ctrl
+    client -->|JSON| idem --> ctrl
     ctrl --> rmap --> dto
     ctrl --> uc
     uc --> agg
@@ -53,7 +54,7 @@ flowchart LR
     port -. implementado por .-> adapter
     adapter --> pmap --> jpa
     adapter --> springrepo --> pg
-    ctrl -. Idempotency-Key .-> redis
+    idem -. SET NX / replay .-> redis
     agg -. lança .-> ex
     ex -. capturada por .-> handler
     handler -->|application/problem+json| client
@@ -63,7 +64,7 @@ flowchart LR
 
 ## 1.1 Endpoints REST ✅
 
-Respostas de erro em `application/problem+json` (RFC 9457), conforme a seção 5.
+Respostas de erro em `application/problem+json` (RFC 9457), conforme a seção 5. Todo `POST` exige o header `Idempotency-Key` (seção 2).
 
 | Método | Caminho | Corpo | Sucesso | Caso de uso |
 |---|---|---|---|---|
@@ -81,30 +82,49 @@ Respostas de erro em `application/problem+json` (RFC 9457), conforme a seção 5
 
 ---
 
-## 2. Fluxo de mutação: débito com idempotência e lock otimista
+## 2. Fluxo de mutação: débito com idempotência e lock otimista ✅
 
-Exemplo de ponta a ponta para `POST /api/v1/accounts/{id}/debits` ✅. Crédito e mudança de status seguem o mesmo esqueleto e só trocam o método chamado no agregado. As etapas com Redis (`Idempotency-Key`) ainda são 🕐: hoje o controller chama o caso de uso direto.
+Exemplo de ponta a ponta para `POST /api/v1/accounts/{id}/debits`. Abertura e crédito seguem o mesmo esqueleto e só trocam o caso de uso; o `PUT /status` não passa pelo filtro porque já é idempotente.
+
+Regras do `IdempotencyFilter` (segue o draft IETF do header `Idempotency-Key`):
+
+- **Obrigatório em todo `POST` da API** (1 a 255 caracteres); sem ele → 400.
+- **Escopo:** a chave vale por método + caminho (`idempotency:POST:/api/v1/accounts/{id}/debits:<key>`), e o corpo entra em uma impressão digital SHA-256.
+- **Só respostas 2xx são guardadas** (status, `Location`, `Content-Type` e corpo) por `app.idempotency.retention` (24h) e repetidas com `Idempotent-Replayed: true`. Qualquer outra resposta libera a chave: uma mutação que falhou não deixou estado, então repetir é seguro. Isso cobre o 409 de lock otimista.
+- **Claim em andamento** expira em `app.idempotency.lock-ttl` (30s), o que limita quanto tempo uma instância que caiu no meio da requisição bloqueia a chave.
+- **Redis indisponível → 503**: a requisição é recusada em vez de arriscar aplicar a mutação duas vezes.
 
 ```mermaid
 sequenceDiagram
     autonumber
     actor C as Cliente
-    participant RC as AccountController
+    participant F as IdempotencyFilter
     participant R as Redis
+    participant RC as AccountController
     participant UC as DebitAccountUseCase
     participant A as Account (domain)
     participant RA as RepositoryAdapter
     participant DB as PostgreSQL
 
-    C->>RC: POST /api/v1/accounts/{id}/debits<br/>Idempotency-Key: k1 · {amount}
-    RC->>R: SET idem:k1 PROCESSING NX EX ttl
-    alt chave já existe com resposta
-        R-->>RC: resposta armazenada
-        RC-->>C: replay da resposta original
-    else chave em PROCESSING
-        RC-->>C: 409 Conflict
-    else chave nova
-        RC->>UC: execute(DebitCommand)
+    C->>F: POST /api/v1/accounts/{id}/debits<br/>Idempotency-Key: k1 · {amount}
+    alt sem Idempotency-Key
+        F-->>C: 400 Bad Request
+    end
+    F->>R: SET idempotency:…:k1 {fingerprint} NX EX lock-ttl
+    alt Redis indisponível
+        F-->>C: 503 Service Unavailable
+    else chave já existe
+        R-->>F: registro armazenado
+        alt fingerprint diferente (outro corpo)
+            F-->>C: 422 Unprocessable Content
+        else ainda em processamento
+            F-->>C: 409 Conflict
+        else concluída
+            F-->>C: replay da resposta original<br/>Idempotent-Replayed: true
+        end
+    else chave nova (claim obtido)
+        F->>RC: segue a requisição
+        RC->>UC: execute(DebitAccountCommand)
         UC->>RA: findById(AccountId)
         RA->>DB: SELECT ... WHERE id = ?
         DB-->>RA: row (version = n)
@@ -118,12 +138,13 @@ sequenceDiagram
             DB-->>RA: ok
             RA-->>UC: Account
             UC-->>RC: AccountResult
-            RC->>R: SET idem:k1 {status, body}
-            RC-->>C: 200 OK
-        else 0 linhas (escrita concorrente)
-            DB-->>RA: OptimisticLockException
-            RC->>R: DEL idem:k1
-            RC-->>C: 409 Conflict (ProblemDetails)
+            RC-->>F: 200 OK
+            F->>R: SET idempotency:…:k1 {status, headers, body} EX retention
+            F-->>C: 200 OK
+        else erro (0 linhas → lock otimista, regra de domínio, 404…)
+            RC-->>F: 4xx ProblemDetails
+            F->>R: DEL idempotency:…:k1
+            F-->>C: 4xx (cliente pode repetir com a mesma chave)
         end
     end
 ```
@@ -186,6 +207,10 @@ stateDiagram-v2
 | Application | conta não encontrada | 404 Not Found |
 | Application | documento já cadastrado | 409 Conflict |
 | Infra | `OptimisticLockingFailureException` | 409 Conflict |
+| Idempotência | `POST` sem `Idempotency-Key` | 400 Bad Request |
+| Idempotência | mesma chave, requisição ainda em processamento | 409 Conflict |
+| Idempotência | mesma chave com corpo diferente | 422 Unprocessable Content |
+| Idempotência | Redis indisponível | 503 Service Unavailable |
 | Infra | Bean Validation (`@Valid`, `limit` fora de 1..100), JSON malformado, UUID/enum inválido | 400 Bad Request |
 
 ---
