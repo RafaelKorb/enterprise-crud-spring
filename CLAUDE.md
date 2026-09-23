@@ -30,7 +30,7 @@
 - Before concluding any task:
   1. Ensure code compiles with `scripts/gradle.sh compileJava`.
   2. Verify unit and integration tests pass with `scripts/gradle.sh test`.
-  3. No architectural leakage across layer boundaries.
+  3. No architectural leakage across layer boundaries (enforced by `LayerArchitectureTest` / ArchUnit).
 
 ## Containerization Guidelines
 - Multi-stage Dockerfile: build stage with Gradle/JDK 25, runtime stage with eclipse-temurin:25-jre-alpine or distroless.
