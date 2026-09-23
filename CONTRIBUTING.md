@@ -49,6 +49,6 @@ scripts/gradle.sh clean compileJava
 scripts/gradle.sh test
 ```
 
-`scripts/gradle.sh` usa o JDK local quando ele é 25+; caso contrário roda o `./gradlew` dentro do container `eclipse-temurin:25-jdk` (requer Docker).
+`scripts/gradle.sh` usa o JDK local quando ele é 25+; caso contrário roda o `./gradlew` dentro do container `eclipse-temurin:25-jdk` (requer Docker). A CI (`.github/workflows/ci.yml`) roda `./gradlew build` em todo PR e push no `master`, e o PR só deve ser mergeado com ela verde.
 
 Sem vazamento entre camadas: `domain` e `application` não importam Spring, Jakarta, Hibernate ou Lombok.
