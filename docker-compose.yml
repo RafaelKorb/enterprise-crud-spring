@@ -1,0 +1,71 @@
+# Local stack: PostgreSQL 16 + Redis 7 + the application.
+#   docker compose up -d --build --wait     # app on http://localhost:8080
+#   docker compose up -d postgres redis     # only the dependencies, to run the app from the IDE
+#   docker compose down -v                  # stop and drop the data volumes
+name: enterprise-crud
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: crud
+      POSTGRES_USER: crud
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-crud}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crud -d crud"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    # AOF keeps idempotency keys across restarts, so a retry after a Redis restart is still recognised
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    image: enterprise-crud:local
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/crud
+      SPRING_DATASOURCE_USERNAME: crud
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-crud}
+      SPRING_DATA_REDIS_HOST: redis
+    ports:
+      - "127.0.0.1:8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 40s
+    # Hardening: immutable filesystem (only /tmp writable), no privilege escalation, no Linux capabilities
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  postgres-data:
+  redis-data:

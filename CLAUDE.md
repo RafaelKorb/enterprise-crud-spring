@@ -36,3 +36,4 @@
 - Multi-stage Dockerfile: build stage with Gradle/JDK 25, runtime stage with eclipse-temurin:25-jre-alpine or distroless.
 - Do NOT run containers as root (use dedicated non-privileged user).
 - Local orchestration via `docker-compose.yml` containing PostgreSQL 16 and Redis 7 with healthchecks.
+- Verify container changes with `docker compose up -d --build --wait && scripts/smoke-test.sh`, then `docker compose down -v`.

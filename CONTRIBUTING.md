@@ -42,6 +42,16 @@
 
 O `CHANGELOG.md` segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/). Toda PR com impacto visível adiciona uma linha em `[Unreleased]` (Added / Changed / Fixed / Removed).
 
+## Execução local
+
+```bash
+docker compose up -d --build --wait   # Postgres 16 + Redis 7 + app em http://localhost:8080
+scripts/smoke-test.sh                 # fluxo real via HTTP: abertura, crédito, débito idempotente, erros
+docker compose down -v                # para tudo e apaga os volumes
+```
+
+Para rodar a aplicação pela IDE, suba só as dependências (`docker compose up -d postgres redis`) e defina `SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/crud`, `SPRING_DATASOURCE_USERNAME=crud` e `SPRING_DATASOURCE_PASSWORD=crud`. Alternativa sem compose: executar `TestCrudApplication` (em `src/test`), que sobe Postgres e Redis via Testcontainers.
+
 ## Quality gate antes do PR
 
 ```bash
