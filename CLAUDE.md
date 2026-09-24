@@ -24,7 +24,7 @@
 - Run all tests: `scripts/gradle.sh test`
 - Run single test: `scripts/gradle.sh test --tests "com.enterprise.crud.*AccountUseCaseTest"`
 - Continuous build check: `scripts/gradle.sh check -x test`
-- CI (`.github/workflows/ci.yml`) runs `./gradlew build` on every PR and push to `master`.
+- CI (`.github/workflows/ci.yml`) runs `./gradlew build` and a container smoke test (compose + `scripts/smoke-test.sh`) on every PR and push to `master`.
 
 ## Agent Workflow & Quality Gate
 - Before concluding any task:

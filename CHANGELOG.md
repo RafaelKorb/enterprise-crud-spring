@@ -18,6 +18,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) · Versiona
 - Idempotência em todo `POST` da API via header `Idempotency-Key` (obrigatório), com claim atômico e replay de respostas 2xx no Redis; corpo diferente com a mesma chave → 422, requisição em andamento → 409, Redis indisponível → 503.
 - `Dockerfile` multi-stage (JDK 25 no build, `eclipse-temurin:25-jre-alpine` no runtime, usuário não-root, jar em camadas) e `docker-compose.yml` com PostgreSQL 16, Redis 7 e a aplicação, todos com healthcheck.
 - `scripts/smoke-test.sh`: teste de fumaça via HTTP contra a stack em execução.
+- CI: job `Container smoke test` que builda a imagem, sobe o compose e roda o smoke test em todo PR.
 - Endpoint `/actuator/health` (único exposto do Actuator), agregando Postgres e Redis, usado pelos healthchecks de container.
 - Teste de arquitetura (ArchUnit) que falha o build se `domain`/`application` dependerem de frameworks ou se alguma dependência apontar para fora.
 
