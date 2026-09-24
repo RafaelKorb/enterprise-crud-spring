@@ -22,10 +22,13 @@ ext {
 	mapstructVersion = '1.6.3'
 	lombokMapstructBindingVersion = '0.2.0'
 	archunitVersion = '1.5.0'
+	datasourceMicrometerVersion = '2.3.0'
 }
 
 dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	implementation 'org.springframework.boot:spring-boot-starter-opentelemetry'
+	implementation "net.ttddyy.observation:datasource-micrometer-spring-boot:${datasourceMicrometerVersion}"
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-data-redis'
 	implementation 'org.springframework.boot:spring-boot-starter-flyway'
@@ -40,6 +43,9 @@ dependencies {
 	annotationProcessor "org.projectlombok:lombok-mapstruct-binding:${lombokMapstructBindingVersion}"
 	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-data-redis-test'
+	testImplementation 'org.springframework.boot:spring-boot-micrometer-tracing-test'
+	testImplementation 'org.springframework.boot:spring-boot-micrometer-metrics-test'
+	testImplementation 'io.opentelemetry:opentelemetry-sdk-testing'
 	testImplementation 'org.springframework.boot:spring-boot-starter-flyway-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'

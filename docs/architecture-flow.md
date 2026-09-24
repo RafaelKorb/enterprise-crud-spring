@@ -218,3 +218,37 @@ stateDiagram-v2
 ## 6. Decisão: versão do agregado × JPA `@Version`
 
 **Decidido: o domínio só carrega a versão.** `Account` guarda a versão lida do banco e nunca a incrementa; `touch()` atualiza apenas `updatedAt`. O incremento é responsabilidade da persistência (`@Version` no Hibernate), então o `UPDATE ... WHERE version = n` compara sempre com o valor efetivamente lido e uma escrita concorrente vira `OptimisticLockException` → 409.
+
+---
+
+## 7. Observabilidade ✅
+
+Os três pilares do RFC-001 (métricas RED, tracing distribuído e logs estruturados) usam Micrometer e OpenTelemetry via `spring-boot-starter-opentelemetry`. Tudo sai em OTLP, então qualquer backend compatível serve.
+
+```mermaid
+flowchart LR
+    subgraph app["crud (Spring Boot)"]
+        http[HTTP server<br/>observation]
+        jdbc[JDBC<br/>datasource-micrometer]
+        lettuce[Lettuce<br/>Redis]
+        idem[IdempotencyFilter<br/>idempotency.requests]
+        logs[Logback<br/>JSON ECS]
+    end
+    http & jdbc & lettuce -->|spans| otlp[(OTLP<br/>collector)]
+    http & idem -->|métricas| otlp
+    otlp --> tempo[(Tempo<br/>traces)]
+    otlp --> prom[(Prometheus<br/>métricas)]
+    logs -->|stdout| collector[(coletor de logs<br/>da plataforma)]
+```
+
+| Pilar | O que existe | Onde configurar |
+|---|---|---|
+| **Métricas RED** | `http.server.requests` por rota, método e status (taxa, erros, latência), com buckets de histograma para p95/p99. Também métricas de Hikari, JVM e Lettuce. | `management.otlp.metrics.export.*` (desligado por padrão) |
+| **Idempotência** | `idempotency.requests{outcome}`: `executed`, `replayed`, `released`, `mismatch`, `in_progress`, `missing_key`, `unavailable`. | automático |
+| **Tracing** | Um trace por requisição, com spans do servidor HTTP, das consultas SQL (`connection`, `query`, `result-set`) e dos comandos Redis. Os spans SQL **não** incluem valores de parâmetros (o documento é dado pessoal). Propagação W3C `traceparent`. | `management.opentelemetry.tracing.export.otlp.endpoint` (vazio por padrão), amostragem de 10% (`management.tracing.sampling.probability`) |
+| **Trace id para o cliente** | Toda resposta de `/api/*` traz `X-Trace-Id`, inclusive os erros gerados pelos filtros. | `ObservabilityConfiguration` |
+| **Logs** | Na imagem Docker, JSON no formato ECS com `traceId`, `spanId`, `service.name` e `service.version`. Fora do container, texto comum. | `LOGGING_STRUCTURED_FORMAT_CONSOLE` |
+
+**Sem coletor, nada é exportado:** o endpoint de traces é vazio e a exportação de métricas está desligada em `application.properties`, então a stack padrão não gera erros de conexão no log. O `docker-compose.observability.yml` liga as duas coisas, com amostragem de 100%, apontando para o `grafana/otel-lgtm` (ver `CONTRIBUTING.md`).
+
+**Limitação conhecida:** respostas produzidas pelos filtros (replay de idempotência e 400/409/422/503) não chegam a um controller, então aparecem em `http.server.requests` com `uri=UNKNOWN`. Para esses casos, use `idempotency.requests`, que tem o desfecho exato.

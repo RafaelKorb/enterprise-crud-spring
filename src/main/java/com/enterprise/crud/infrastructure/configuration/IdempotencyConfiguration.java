@@ -3,6 +3,7 @@ package com.enterprise.crud.infrastructure.configuration;
 import com.enterprise.crud.infrastructure.entrypoints.rest.idempotency.IdempotencyFilter;
 import com.enterprise.crud.infrastructure.entrypoints.rest.idempotency.IdempotencyStore;
 import com.enterprise.crud.infrastructure.redis.RedisIdempotencyStore;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
@@ -39,9 +40,9 @@ class IdempotencyConfiguration {
     /** Only the versioned API is covered; POST is the only non-idempotent method it exposes. */
     @Bean
     FilterRegistrationBean<IdempotencyFilter> idempotencyFilter(IdempotencyStore store, JsonMapper jsonMapper,
-            IdempotencyProperties properties) {
-        var registration = new FilterRegistrationBean<>(
-                new IdempotencyFilter(store, jsonMapper, properties.lockTtl(), properties.retention()));
+            IdempotencyProperties properties, MeterRegistry meterRegistry) {
+        var registration = new FilterRegistrationBean<>(new IdempotencyFilter(store, jsonMapper,
+                properties.lockTtl(), properties.retention(), meterRegistry));
         registration.addUrlPatterns("/api/*");
         return registration;
     }
