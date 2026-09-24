@@ -16,6 +16,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) · Versiona
 - CI no GitHub Actions: `./gradlew build` (compilação, testes unitários e de integração) em todo PR e push no `master`.
 - API REST de contas versionada em `/api/v1` (versionamento nativo do Spring Framework 7): `POST /accounts`, `GET /accounts/{id}`, `GET /accounts` (cursor), `POST /accounts/{id}/credits`, `POST /accounts/{id}/debits` e `PUT /accounts/{id}/status`, com mapeamento MapStruct e erros em Problem Details (RFC 9457).
 - Idempotência em todo `POST` da API via header `Idempotency-Key` (obrigatório), com claim atômico e replay de respostas 2xx no Redis; corpo diferente com a mesma chave → 422, requisição em andamento → 409, Redis indisponível → 503.
+- Endpoint `/actuator/health` (único exposto do Actuator), agregando Postgres e Redis, usado pelos healthchecks de container.
 - Teste de arquitetura (ArchUnit) que falha o build se `domain`/`application` dependerem de frameworks ou se alguma dependência apontar para fora.
 
 ### Changed
