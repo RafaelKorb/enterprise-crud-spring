@@ -1,5 +1,6 @@
 package com.enterprise.crud.infrastructure.entrypoints.rest.idempotency;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -14,6 +15,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -30,8 +32,9 @@ class IdempotencyFilterTest {
     private static final String BODY = "{\"amount\": 10.00}";
 
     private final InMemoryIdempotencyStore store = new InMemoryIdempotencyStore();
+    private final SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
     private final IdempotencyFilter filter = new IdempotencyFilter(store, JsonMapper.builder().build(),
-            Duration.ofSeconds(30), Duration.ofHours(24));
+            Duration.ofSeconds(30), Duration.ofHours(24), meterRegistry);
 
     /** Stands in for the controller: counts executions and answers with the configured status. */
     private final AtomicInteger executions = new AtomicInteger();
@@ -44,6 +47,7 @@ class IdempotencyFilterTest {
         assertEquals(400, response.getStatus());
         assertEquals(MediaType.APPLICATION_PROBLEM_JSON_VALUE, response.getContentType());
         assertEquals(0, executions.get());
+        assertEquals(1, count(IdempotencyFilter.Outcome.MISSING_KEY));
     }
 
     @Test
@@ -66,6 +70,8 @@ class IdempotencyFilterTest {
         assertEquals(MediaType.APPLICATION_JSON_VALUE, retry.getContentType());
         assertEquals("true", retry.getHeader(IdempotencyFilter.REPLAYED_HEADER));
         assertNull(first.getHeader(IdempotencyFilter.REPLAYED_HEADER));
+        assertEquals(1, count(IdempotencyFilter.Outcome.EXECUTED));
+        assertEquals(1, count(IdempotencyFilter.Outcome.REPLAYED));
     }
 
     @Test
@@ -83,6 +89,7 @@ class IdempotencyFilterTest {
 
         assertEquals(422, response.getStatus());
         assertEquals(1, executions.get());
+        assertEquals(1, count(IdempotencyFilter.Outcome.MISMATCH));
     }
 
     @Test
@@ -104,6 +111,7 @@ class IdempotencyFilterTest {
 
         assertEquals(409, response.getStatus());
         assertEquals(0, executions.get());
+        assertEquals(1, count(IdempotencyFilter.Outcome.IN_PROGRESS));
     }
 
     @Test
@@ -115,6 +123,8 @@ class IdempotencyFilterTest {
         handlerStatus = 201;
         assertEquals(201, send(post("k1", BODY)).getStatus());
         assertEquals(2, executions.get());
+        assertEquals(1, count(IdempotencyFilter.Outcome.RELEASED));
+        assertEquals(1, count(IdempotencyFilter.Outcome.EXECUTED));
     }
 
     @Test
@@ -139,6 +149,7 @@ class IdempotencyFilterTest {
 
         assertEquals(503, response.getStatus());
         assertEquals(0, executions.get());
+        assertEquals(1, count(IdempotencyFilter.Outcome.UNAVAILABLE));
     }
 
     @Test
@@ -149,6 +160,11 @@ class IdempotencyFilterTest {
         assertEquals(201, send(put).getStatus());
         assertEquals(1, executions.get());
         assertTrue(store.records.isEmpty());
+    }
+
+    private double count(IdempotencyFilter.Outcome outcome) {
+        return meterRegistry.get(IdempotencyFilter.METRIC_NAME)
+                .tag("outcome", outcome.name().toLowerCase(Locale.ROOT)).counter().count();
     }
 
     private MockHttpServletResponse send(MockHttpServletRequest request) throws Exception {
@@ -180,7 +196,8 @@ class IdempotencyFilterTest {
     /** Captures the fingerprint the filter computes by letting it claim a throwaway key. */
     private String fingerprintOf(String body) throws Exception {
         InMemoryIdempotencyStore probe = new InMemoryIdempotencyStore();
-        new IdempotencyFilter(probe, JsonMapper.builder().build(), Duration.ofSeconds(30), Duration.ofHours(24))
+        new IdempotencyFilter(probe, JsonMapper.builder().build(), Duration.ofSeconds(30), Duration.ofHours(24),
+                new SimpleMeterRegistry())
                 .doFilter(post("probe", body), new MockHttpServletResponse(), (req, res) -> {
                 });
         return probe.records.values().iterator().next().fingerprint();

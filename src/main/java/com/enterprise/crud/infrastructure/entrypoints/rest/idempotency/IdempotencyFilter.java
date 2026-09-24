@@ -1,5 +1,7 @@
 package com.enterprise.crud.infrastructure.entrypoints.rest.idempotency;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ReadListener;
 import jakarta.servlet.ServletException;
@@ -31,7 +33,9 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -42,13 +46,35 @@ import java.util.Optional;
  * The key is claimed atomically before the request runs. Only successful responses are stored and replayed: a
  * failed mutation leaves no state behind, so its key is released and the client may retry with it. If the store is
  * unavailable the request is refused with 503 rather than risk applying a mutation twice.
+ * <p>
+ * Every decision is counted in {@value #METRIC_NAME}, tagged by {@link Outcome}, so replay and conflict rates are
+ * visible next to the HTTP RED metrics.
  */
 public class IdempotencyFilter extends OncePerRequestFilter {
 
     public static final String IDEMPOTENCY_KEY_HEADER = "Idempotency-Key";
     public static final String REPLAYED_HEADER = "Idempotent-Replayed";
 
+    public static final String METRIC_NAME = "idempotency.requests";
+
     static final int MAX_KEY_LENGTH = 255;
+
+    enum Outcome {
+        /** Request without a usable key, rejected with 400. */
+        MISSING_KEY,
+        /** Store unreachable, rejected with 503. */
+        UNAVAILABLE,
+        /** Key reused with a different request, rejected with 422. */
+        MISMATCH,
+        /** Key still claimed by another request, rejected with 409. */
+        IN_PROGRESS,
+        /** Stored response replayed without running the request. */
+        REPLAYED,
+        /** Request ran and its 2xx response was stored. */
+        EXECUTED,
+        /** Request ran but failed, so the key was released for a retry. */
+        RELEASED
+    }
 
     private static final Logger log = LoggerFactory.getLogger(IdempotencyFilter.class);
     private static final List<String> REPLAYED_RESPONSE_HEADERS = List.of(HttpHeaders.CONTENT_TYPE,
@@ -58,12 +84,20 @@ public class IdempotencyFilter extends OncePerRequestFilter {
     private final JsonMapper jsonMapper;
     private final Duration lockTtl;
     private final Duration retention;
+    private final Map<Outcome, Counter> outcomes = new EnumMap<>(Outcome.class);
 
-    public IdempotencyFilter(IdempotencyStore store, JsonMapper jsonMapper, Duration lockTtl, Duration retention) {
+    public IdempotencyFilter(IdempotencyStore store, JsonMapper jsonMapper, Duration lockTtl, Duration retention,
+            MeterRegistry meterRegistry) {
         this.store = store;
         this.jsonMapper = jsonMapper;
         this.lockTtl = lockTtl;
         this.retention = retention;
+        for (Outcome outcome : Outcome.values()) {
+            outcomes.put(outcome, Counter.builder(METRIC_NAME)
+                    .description("Idempotency-Key decisions on POST requests")
+                    .tag("outcome", outcome.name().toLowerCase(Locale.ROOT))
+                    .register(meterRegistry));
+        }
     }
 
     @Override
@@ -76,6 +110,7 @@ public class IdempotencyFilter extends OncePerRequestFilter {
             throws ServletException, IOException {
         String key = request.getHeader(IDEMPOTENCY_KEY_HEADER);
         if (key == null || key.isBlank() || key.length() > MAX_KEY_LENGTH) {
+            count(Outcome.MISSING_KEY);
             writeProblem(response, HttpStatus.BAD_REQUEST,
                     "Header %s is required on POST requests (1 to %d characters)"
                             .formatted(IDEMPOTENCY_KEY_HEADER, MAX_KEY_LENGTH));
@@ -91,6 +126,7 @@ public class IdempotencyFilter extends OncePerRequestFilter {
             existing = store.reserve(storeKey, fingerprint, lockTtl);
         } catch (DataAccessException e) {
             log.warn("Idempotency store unavailable, refusing {} {}", request.getMethod(), request.getRequestURI(), e);
+            count(Outcome.UNAVAILABLE);
             writeProblem(response, HttpStatus.SERVICE_UNAVAILABLE,
                     "Request cannot be processed safely right now; retry later with the same Idempotency-Key");
             return;
@@ -104,14 +140,17 @@ public class IdempotencyFilter extends OncePerRequestFilter {
         try {
             chain.doFilter(cachedRequest, cachedResponse);
         } catch (IOException | ServletException | RuntimeException e) {
+            count(Outcome.RELEASED);
             releaseQuietly(storeKey);
             throw e;
         }
         if (HttpStatusCode.valueOf(cachedResponse.getStatus()).is2xxSuccessful()) {
+            count(Outcome.EXECUTED);
             completeQuietly(storeKey, IdempotencyRecord.completed(fingerprint, cachedResponse.getStatus(),
                     replayableHeaders(cachedResponse),
                     new String(cachedResponse.getContentAsByteArray(), StandardCharsets.UTF_8)));
         } else {
+            count(Outcome.RELEASED);
             releaseQuietly(storeKey);
         }
         cachedResponse.copyBodyToResponse();
@@ -120,12 +159,15 @@ public class IdempotencyFilter extends OncePerRequestFilter {
     private void answerFromExisting(IdempotencyRecord record, String fingerprint, HttpServletResponse response)
             throws IOException {
         if (!record.fingerprint().equals(fingerprint)) {
+            count(Outcome.MISMATCH);
             writeProblem(response, HttpStatus.UNPROCESSABLE_CONTENT,
                     "Idempotency-Key was already used with a different request");
         } else if (!record.isCompleted()) {
+            count(Outcome.IN_PROGRESS);
             writeProblem(response, HttpStatus.CONFLICT,
                     "A request with this Idempotency-Key is still being processed");
         } else {
+            count(Outcome.REPLAYED);
             response.setStatus(record.status());
             record.headers().forEach(response::setHeader);
             response.setHeader(REPLAYED_HEADER, "true");
@@ -133,6 +175,10 @@ public class IdempotencyFilter extends OncePerRequestFilter {
                 response.getOutputStream().write(record.body().getBytes(StandardCharsets.UTF_8));
             }
         }
+    }
+
+    private void count(Outcome outcome) {
+        outcomes.get(outcome).increment();
     }
 
     /** The response was already produced, so a store failure here must not turn it into an error. */

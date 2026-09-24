@@ -33,5 +33,7 @@ EXPOSE 8080
 
 # Size the heap from the container memory limit and let the orchestrator restart on OOM
 ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError"
+# JSON logs (Elastic Common Schema) with trace/span ids, ready for any log collector; override to "" for plain text
+ENV LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs
 
 ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]
