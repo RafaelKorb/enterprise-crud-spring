@@ -5,6 +5,8 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) · Versiona
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-23
+
 ### Added
 - Camada `application`: casos de uso Open, Credit, Debit, ChangeStatus, Get e List (paginação por cursor), com commands/queries/results em records.
 - Exceções de domínio `AccountNotFoundException` e `DocumentNumberAlreadyRegisteredException`.
@@ -25,3 +27,6 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) · Versiona
 ### Changed
 - Valores monetários com mais de 2 casas decimais passam a ser rejeitados pelo domínio.
 - `Account` não incrementa mais `version`; o incremento do lock otimista passa a ser responsabilidade da persistência.
+
+[Unreleased]: https://github.com/RafaelKorb/enterprise-crud-spring/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/RafaelKorb/enterprise-crud-spring/releases/tag/v0.1.0
