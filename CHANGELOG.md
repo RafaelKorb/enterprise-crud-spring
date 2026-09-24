@@ -9,6 +9,7 @@ Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/) · Versiona
 - Observabilidade com Micrometer e OpenTelemetry (OTLP): métricas RED de `http.server.requests` com histograma de latência, tracing por requisição cobrindo HTTP, SQL (sem valores de parâmetros) e Redis, e logs JSON (ECS) com `traceId`/`spanId` na imagem Docker.
 - Header `X-Trace-Id` em toda resposta de `/api/*`.
 - Métrica `idempotency.requests` por desfecho (`executed`, `replayed`, `released`, `mismatch`, `in_progress`, `missing_key`, `unavailable`).
+- `docker-compose.observability.yml`: backend local opcional (`grafana/otel-lgtm`) com Grafana, Tempo e Prometheus.
 
 ## [0.1.0] - 2026-09-23
 

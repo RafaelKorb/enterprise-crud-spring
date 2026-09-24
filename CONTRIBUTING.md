@@ -50,6 +50,14 @@ scripts/smoke-test.sh                 # fluxo real via HTTP: abertura, crédito,
 docker compose down -v                # para tudo e apaga os volumes
 ```
 
+Com o backend de observabilidade (Grafana em http://localhost:3000, com traces no Tempo e métricas no Prometheus; imagem grande, de uso local):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d --build --wait
+```
+
+Toda resposta da API traz `X-Trace-Id`; esse id localiza o trace no Tempo e as linhas de log correspondentes (campo `traceId`).
+
 Para rodar a aplicação pela IDE, suba só as dependências (`docker compose up -d postgres redis`) e defina `SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/crud`, `SPRING_DATASOURCE_USERNAME=crud` e `SPRING_DATASOURCE_PASSWORD=crud`. Alternativa sem compose: executar `TestCrudApplication` (em `src/test`), que sobe Postgres e Redis via Testcontainers.
 
 ## Quality gate antes do PR
