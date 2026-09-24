@@ -24,7 +24,7 @@
 - Run all tests: `scripts/gradle.sh test`
 - Run single test: `scripts/gradle.sh test --tests "com.enterprise.crud.*AccountUseCaseTest"`
 - Continuous build check: `scripts/gradle.sh check -x test`
-- CI (`.github/workflows/ci.yml`) runs `./gradlew build` on every PR and push to `master`.
+- CI (`.github/workflows/ci.yml`) runs `./gradlew build` and a container smoke test (compose + `scripts/smoke-test.sh`) on every PR and push to `master`.
 
 ## Agent Workflow & Quality Gate
 - Before concluding any task:
@@ -36,3 +36,4 @@
 - Multi-stage Dockerfile: build stage with Gradle/JDK 25, runtime stage with eclipse-temurin:25-jre-alpine or distroless.
 - Do NOT run containers as root (use dedicated non-privileged user).
 - Local orchestration via `docker-compose.yml` containing PostgreSQL 16 and Redis 7 with healthchecks.
+- Verify container changes with `docker compose up -d --build --wait && scripts/smoke-test.sh`, then `docker compose down -v`.
